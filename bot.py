@@ -688,7 +688,8 @@ async def ask_claude(chat_id, text, images=()):
             "sandbox": {
                 "enabled": True, "failIfUnavailable": True,
                 "autoAllowBashIfSandboxed": True, "allowUnsandboxedCommands": False,
-                "filesystem": {"denyRead": [os.path.expanduser("~")], "allowRead": [cwd]},
+                # HERE: вне ~ (например, /opt) иначе открыт .env с TG_TOKEN.
+                "filesystem": {"denyRead": [os.path.expanduser("~"), HERE], "allowRead": [cwd]},
                 # Без allowedDomains прокси песочницы спрашивал бы разрешение на
                 # каждый хост, а в dontAsk это отказ: интернета у Bash нет.
                 "network": {"allowedDomains": ["*"]},
