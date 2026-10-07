@@ -1,0 +1,16 @@
+[Unit]
+Description=Telegram bridge to Claude Code (subscription auth)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/gpt_tg
+EnvironmentFile=%h/projects/gpt_tg/.env
+Environment=CLAUDE_TG_MODEL=sonnet
+ExecStart=%h/projects/gpt_tg/.venv/bin/python %h/projects/gpt_tg/bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
