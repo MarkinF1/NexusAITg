@@ -68,7 +68,11 @@ MODELS_CACHE = os.path.expanduser("~/.codex/models_cache.json")
 CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"]  # claude --effort
 MARKS = {"claude": "🟠", "codex": "🟢"}
 ADMIN_ONLY_MODELS = {"gpt-6-astra"}
-SYSTEM_PROMPT = "Ты отвечаешь пользователю в Telegram. Пиши кратко, без таблиц и без сложной markdown-разметки."
+# Claude Code сам подкладывает в контекст email аккаунта подписки — это владелец
+# бота, а не собеседник; без запрета модель записывала его в общую память.
+SYSTEM_PROMPT = ("Ты отвечаешь пользователю в Telegram. Пиши кратко, без таблиц и без сложной markdown-разметки.\n"
+                 "Email из служебного контекста принадлежит владельцу бота, а не собеседнику: "
+                 "никогда не называй его, не используй и не записывай в память и файлы.")
 # WebFetch и WebSearch --restricted вырезает, если не перечислить их здесь.
 FILE_TOOLS = "Bash,Read,Write,Edit,Glob,Grep,NotebookEdit,WebFetch,WebSearch"
 LIMIT = 4000  # лимит Telegram 4096, с запасом
