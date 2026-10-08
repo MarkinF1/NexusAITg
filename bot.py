@@ -285,10 +285,22 @@ def set_active_session(chat_id, sid, engine="claude"):
         set_state(chat_id, "pending-workspace-codex", uuid.uuid4().hex)
 
 
+def data_dir(chat_id):
+    """Всё, что доступно модели: общая память и рабочие папки всех бесед чата,
+    у группы — всех её тем. Токены, настройки и транскрипты лежат рядом, вне неё."""
+    owner = chat_id[0] if is_topic(chat_id) else chat_id
+    return os.path.join(SESSIONS, str(int(owner)), "data")
+
+
+def memory_file(chat_id):
+    return session_files.shared_memory(data_dir(chat_id))
+
+
 def workspace_dir(chat_id, engine=None, sid=None):
-    """Рабочие файлы изолированы от токенов и от других бесед этого же чата."""
+    """Рабочая папка беседы внутри data_dir: своя у каждой сессии или темы."""
     if is_topic(chat_id):
-        return session_files.prepare(os.path.join(chat_dir(chat_id), "workspace"))
+        return session_files.prepare(os.path.join(data_dir(chat_id), "topics", str(int(chat_id[1]))),
+                                     memory_file(chat_id))
     engine = engine or get_engine(chat_id)
     sid = active_session(chat_id, engine) if sid is None else sid
     if engine == "codex":
@@ -305,7 +317,8 @@ def workspace_dir(chat_id, engine=None, sid=None):
     # Файл сопоставления является состоянием бота, но путь всё равно проверяем.
     if any(c not in "0123456789abcdef-" for c in key):
         raise ValueError("Повреждён путь рабочей папки сессии")
-    return session_files.prepare(os.path.join(chat_dir(chat_id), "workspaces", engine, key))
+    return session_files.prepare(os.path.join(data_dir(chat_id), "workspaces", engine, key),
+                                 memory_file(chat_id))
 
 
 def bind_codex_workspace(chat_id, sid, cwd):
@@ -672,6 +685,7 @@ def parse_result(out):
 async def ask_claude(chat_id, text, images=()):
     sid = active_session(chat_id, "claude")
     cwd = workspace_dir(chat_id, "claude")
+    data = data_dir(chat_id)
     env = model_env(CLAUDE_CONFIG_DIR=chat_dir(chat_id))
     effort = get_effort(chat_id, "claude")
     # stream-json сохраняет прямую передачу изображений вместе с файловыми инструментами.
@@ -684,12 +698,15 @@ async def ask_claude(chat_id, text, images=()):
         # Bash в песочнице: без него модель не распакует docx и другие архивы.
         "--allowedTools", "Bash,Read,Write,Edit,Glob,Grep,NotebookEdit,WebFetch,WebSearch",
         "--permission-mode", "dontAsk",
+        "--add-dir", data,  # файловым инструментам — та же папка, что и Bash
         "--settings", json.dumps({
             "sandbox": {
                 "enabled": True, "failIfUnavailable": True,
                 "autoAllowBashIfSandboxed": True, "allowUnsandboxedCommands": False,
-                # HERE: вне ~ (например, /opt) иначе открыт .env с TG_TOKEN.
-                "filesystem": {"denyRead": [os.path.expanduser("~"), HERE], "allowRead": [cwd]},
+                # Закрыто всё хозяйство бота (.env с TG_TOKEN, токены подписок,
+                # чужие чаты), открыта только папка данных этого чата или группы.
+                "filesystem": {"denyRead": [os.path.expanduser("~"), HERE, SESSIONS],
+                               "allowRead": [data], "allowWrite": [data]},
                 # Без allowedDomains прокси песочницы спрашивал бы разрешение на
                 # каждый хост, а в dontAsk это отказ: интернета у Bash нет.
                 "network": {"allowedDomains": ["*"]},
@@ -699,7 +716,7 @@ async def ask_claude(chat_id, text, images=()):
         }),
         "--system-prompt-snapshot", "off",
         "--model", get_model(chat_id, "claude"),
-        "--system-prompt", SYSTEM_PROMPT + "\n" + session_files.instructions(cwd),
+        "--system-prompt", SYSTEM_PROMPT + "\n" + session_files.instructions(cwd, memory_file(chat_id)),
     ] + (["--effort", effort] if effort else [])
     payload = build_input(file_prompt(cwd, text), images).encode()
     err = ""
@@ -766,13 +783,13 @@ def codex_args(chat_id, sid, effort, answer_file, files):
     ]
     if effort:
         args += ["-c", f'model_reasoning_effort="{effort}"']
-    for setting in ('sandbox_mode="workspace-write"', 'approval_policy="never"',
-                    'sandbox_workspace_write.exclude_slash_tmp=true',
-                    'sandbox_workspace_write.exclude_tmpdir_env_var=true',
-                    'sandbox_workspace_write.network_access=false',
-                    'sandbox_workspace_write.writable_roots=[]',
+    # Профиль прав сильнее sandbox_mode: читать и писать можно только папку данных
+    # чата, из остального — системные каталоги на чтение. Сеть профиль не даёт.
+    for setting in ('default_permissions="chat"', 'approval_policy="never"',
+                    'permissions.chat.filesystem={":minimal" = "read", %s = "write"}'
+                    % json.dumps(data_dir(chat_id)),
                     'developer_instructions=' + json.dumps(
-                        SYSTEM_PROMPT + "\n" + session_files.instructions(cwd))):
+                        SYSTEM_PROMPT + "\n" + session_files.instructions(cwd, memory_file(chat_id)))):
         args += ["-c", setting]
     for path in files:
         args += ["-i", path]

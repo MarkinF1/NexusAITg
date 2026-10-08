@@ -172,6 +172,24 @@ class FilesTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('files/from_user', bot.file_prompt(str(self.cwd), 'hello'))
         self.assertNotEqual(bot.workspace_dir(222), str(self.cwd))
 
+    def test_shared_memory_per_chat_and_group(self):
+        data = Path(bot.data_dir(111))
+        # обе сессии чата лежат в его папке данных и видят одну общую память
+        self.assertTrue(self.cwd.is_relative_to(data))
+        bot.set_active_session(111, 'other')
+        self.assertTrue(Path(bot.workspace_dir(111)).is_relative_to(data))
+        self.assertEqual(bot.memory_file(111), str(data / 'MEMORY.md'))
+        self.assertIn(bot.memory_file(111), (self.cwd / 'AGENTS.md').read_text())
+        # токены и настройки вне досягаемости модели
+        self.assertFalse(Path(bot.chat_dir(111)).is_relative_to(data))
+        self.assertNotEqual(bot.memory_file(222), bot.memory_file(111))
+        # темы одной группы делят память, разные группы — нет
+        self.assertEqual(bot.memory_file((-100, 5)), bot.memory_file((-100, 7)))
+        self.assertNotEqual(bot.workspace_dir((-100, 5)), bot.workspace_dir((-100, 7)))
+        self.assertTrue(Path(bot.workspace_dir((-100, 5))).is_relative_to(bot.data_dir((-100, 7))))
+        self.assertFalse(Path(bot.chat_dir((-100, 5))).is_relative_to(bot.data_dir((-100, 5))))
+        self.assertNotEqual(bot.memory_file((-100, 5)), bot.memory_file((-200, 5)))
+
     async def test_new_waits_until_file_response_finishes(self):
         entered, release = asyncio.Event(), asyncio.Event()
         async def model(*args):
@@ -202,7 +220,7 @@ class FilesTest(unittest.IsolatedAsyncioTestCase):
                 await bot.ask_codex(111, 'question')
             self.assertEqual(spawn.call_args.kwargs['cwd'], cwd)
             self.assertNotIn('TG_TOKEN', spawn.call_args.kwargs['env'])
-            self.assertIn('sandbox_mode="workspace-write"', spawn.call_args.args)
+            self.assertIn('default_permissions="chat"', spawn.call_args.args)
         self.assertEqual(bot.active_session(111), 'thread-1')
         self.assertEqual(bot.workspace_dir(111), cwd)
         bot.set_active_session(111, '', 'codex')

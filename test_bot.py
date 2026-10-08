@@ -256,7 +256,7 @@ resumed = bot.codex_args(DUO, "th-1", "", "/tmp/ans.txt", [])
 assert resumed[1] == "exec" and resumed[4:6] == ["resume", "th-1"]
 assert resumed[resumed.index("-C") + 1] == bot.workspace_dir(DUO, "codex")
 assert not any("model_reasoning_effort" in arg for arg in resumed)
-assert 'sandbox_mode="workspace-write"' in resumed
+assert 'default_permissions="chat"' in resumed and any(bot.data_dir(DUO) in a for a in resumed)
 
 # разбор событий codex: id, ответ, ошибка; мусор игнорируется
 out = (b'not json\n{"type":"thread.started","thread_id":"th-9"}\n'
