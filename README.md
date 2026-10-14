@@ -113,12 +113,12 @@ Codex необязателен. Если он установлен и автор
 
 ### 4. Установка бота
 
-Бот ставится в `/opt/NexusAI`: на этот путь рассчитан systemd-сервис.
+Бот ставится в `/opt/NexusAITg`: на этот путь рассчитан systemd-сервис.
 
 ```sh
-sudo git clone https://github.com/MarkinF1/NexusAI.git /opt/NexusAI
-sudo chown -R "$USER": /opt/NexusAI
-cd /opt/NexusAI
+sudo git clone https://github.com/MarkinF1/NexusAITg.git /opt/NexusAITg
+sudo chown -R "$USER": /opt/NexusAITg
+cd /opt/NexusAITg
 cp .env.example .env && chmod 600 .env
 nano .env        # впишите TG_TOKEN и TG_ALLOWED
 ./start.sh
@@ -136,7 +136,7 @@ systemd-сервис `claude-tg`, который поднимается сам �
 journalctl --user -u claude-tg -f        # логи
 systemctl --user restart claude-tg       # перезапуск (например, после правки .env)
 systemctl --user stop claude-tg          # остановка
-cd /opt/NexusAI && git pull && systemctl --user restart claude-tg   # обновление
+cd /opt/NexusAITg && git pull && systemctl --user restart claude-tg   # обновление
 ```
 
 ## Настройка

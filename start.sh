@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 # пути в claude-tg.service жёсткие
-[ "$PWD" = /opt/NexusAI ] || { echo "проект должен лежать в /opt/NexusAI, а не в $PWD" >&2; exit 1; }
+[ "$PWD" = /opt/NexusAITg ] || { echo "проект должен лежать в /opt/NexusAITg, а не в $PWD" >&2; exit 1; }
 
 [ -f .env ] || { echo "нет .env рядом со скриптом (нужны TG_TOKEN и TG_ALLOWED)" >&2; exit 1; }
 [ -x .venv/bin/python ] || python3 -m venv .venv

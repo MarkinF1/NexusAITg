@@ -5,10 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/NexusAI
-EnvironmentFile=/opt/NexusAI/.env
+WorkingDirectory=/opt/NexusAITg
+EnvironmentFile=/opt/NexusAITg/.env
 Environment=CLAUDE_TG_MODEL=sonnet
-ExecStart=/opt/NexusAI/.venv/bin/python /opt/NexusAI/bot.py
+ExecStart=/opt/NexusAITg/.venv/bin/python /opt/NexusAITg/bot.py
 Restart=always
 RestartSec=5
 
