@@ -100,6 +100,9 @@ album_deadline = {}
 # Одна сессия claude не переживёт два параллельных --resume, поэтому запросы
 # одной беседы сериализуются. Разные темы и личные чаты идут параллельно.
 locks = defaultdict(asyncio.Lock)
+# Два claude, одновременно обновляющие токен, гасят друг друга: выигрывает один,
+# второй остаётся с отозванным refresh-токеном. Перед истечением — по одному.
+creds_lock = asyncio.Lock()
 
 
 def topic_store():
@@ -188,16 +191,38 @@ def session_id(chat_id):
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"claude-tg-{chat_id}"))
 
 
+def creds_freshness(path):
+    """Чем больше, тем свежее: срок токена claude, иначе время записи файла."""
+    try:
+        with open(path) as f:
+            expires = (json.load(f).get("claudeAiOauth") or {}).get("expiresAt") or 0
+    except (OSError, ValueError, AttributeError):
+        expires = 0
+    try:
+        return expires, os.path.getmtime(path)
+    except OSError:
+        return expires, 0
+
+
 def link_creds(link, host):
     """Токен подписки один на всех, у каждого чата — симлинк на него."""
     if os.path.islink(link):
         return
     if os.path.exists(link):
-        # ponytail: обновление токена заменило симлинк файлом — возвращаем
-        # свежий токен хосту, иначе копии разойдутся и обе протухнут.
-        shutil.copy2(link, host)
+        # claude обновляет токен атомарной заменой файла, и симлинк становится
+        # копией. Refresh-токен одноразовый: старый у хоста уже не работает,
+        # поэтому возвращаем хосту копию — но только если она свежее. Копия
+        # после неудачного обновления пустая и не должна затереть /login.
+        if not os.path.exists(host) or creds_freshness(link) >= creds_freshness(host):
+            shutil.copy2(link, host)
         os.remove(link)
     os.symlink(host, link)
+
+
+def creds_expiring(margin):
+    """Токен вот-вот обновится — тогда claude запускаем по одному."""
+    expires, _ = creds_freshness(HOST_CREDS)
+    return expires and expires / 1000 - time.time() < margin
 
 
 def chat_dir(chat_id):
@@ -723,6 +748,27 @@ async def ask_claude(chat_id, text, images=()):
         "--system-prompt", SYSTEM_PROMPT + "\n" + session_files.instructions(cwd, memory_file(chat_id)),
     ] + (["--effort", effort] if effort else [])
     payload = build_input(file_prompt(cwd, text), images).encode()
+    creds = os.path.join(chat_dir(chat_id), ".credentials.json")
+    for retry in (True, False):
+        # Пока длится запрос, токен может истечь — запас на весь TIMEOUT.
+        async with creds_lock if creds_expiring(margin=TIMEOUT + 300) else nullcontext():
+            try:
+                return await run_claude(base, sid, payload, cwd, env)
+            except RuntimeError as e:
+                # Токен обновил параллельный запрос: берём его и пробуем ещё раз.
+                if not retry or not any(s in str(e).lower() for s in AUTH_ERRORS):
+                    raise
+                log.warning("claude auth failed, retrying with host token: %s", e)
+            finally:
+                # Обновлённый токен сразу отдаём хосту и остальным чатам.
+                link_creds(creds, HOST_CREDS)
+
+
+AUTH_ERRORS = ("failed to authenticate", "oauth", "authentication_error", "invalid api key",
+               "please run /login")
+
+
+async def run_claude(base, sid, payload, cwd, env):
     err = ""
     # Сначала пробуем продолжить сессию, при неудаче создаём её с тем же id.
     for tail in (["--resume", sid], ["--session-id", sid]):

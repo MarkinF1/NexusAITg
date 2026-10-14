@@ -67,6 +67,14 @@ bot.chat_dir(111)
 assert os.path.islink(link)
 assert '"fresh"' in open(bot.HOST_CREDS).read()
 
+# копия после неудачного обновления токена не затирает более свежий /login хоста
+open(bot.HOST_CREDS, "w").write('{"claudeAiOauth": {"expiresAt": 2000}}')
+os.remove(link)
+open(link, "w").write('{"claudeAiOauth": {}}')
+bot.chat_dir(111)
+assert os.path.islink(link)
+assert '2000' in open(bot.HOST_CREDS).read()
+
 # выбор модели: по умолчанию из окружения, хранится на чат, мусор игнорируется
 assert bot.get_model(111) == bot.DEFAULT_MODEL
 bot.set_model(111, "opus")
